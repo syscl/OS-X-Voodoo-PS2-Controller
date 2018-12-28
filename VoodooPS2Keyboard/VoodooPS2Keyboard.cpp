@@ -469,6 +469,8 @@ bool ApplePS2Keyboard::start(IOService * provider)
 #else
     setProperty("RM,Build", "Release-" LOGNAME);
 #endif
+    
+    setProperty(kDeliverNotifications, kOSBooleanTrue);
 
     setProperty(kDeliverNotifications, kOSBooleanTrue);
     //
@@ -660,16 +662,9 @@ bool ApplePS2Keyboard::start(IOService * provider)
     _powerControlHandlerInstalled = true;
     
     //
-    // Install our message handler.
-    //
-    _device->installMessageAction( this,
-                                  OSMemberFunctionCast(PS2MessageAction, this, &ApplePS2Keyboard::receiveMessage));
-    _messageHandlerInstalled = true;
-    
-    //
     // Tell ACPIPS2Nub that we are interested in ACPI notifications
     //
-    setProperty(kDeliverNotifications, true);
+    //setProperty(kDeliverNotifications, true);
 
     DEBUG_LOG("ApplePS2Keyboard::start leaving.\n");
     
@@ -1231,13 +1226,6 @@ void ApplePS2Keyboard::stop(IOService * provider)
     _powerControlHandlerInstalled = false;
 
     //
-    // Uninstall the message handler.
-    //
-    
-    if ( _messageHandlerInstalled ) _device->uninstallMessageAction();
-    _messageHandlerInstalled = false;
-    
-    //
     // Release the pointer to the provider object.
     //
 
@@ -1303,44 +1291,69 @@ IOReturn ApplePS2Keyboard::message(UInt32 type, IOService* provider, void* argum
         IOLog("ApplePS2Keyboard::message: type=%x, provider=%p", type, provider);
 #endif
     
-    if (type == kIOACPIMessageDeviceNotification && NULL != argument)
+    switch (type)
     {
-        UInt32 arg = *static_cast<UInt32*>(argument);
-        if ((arg & 0xFFFF0000) == 0)
-        {
-            UInt8 packet[kPacketLength];
-            packet[0] = arg >> 8;
-            packet[1] = arg;
-            if (1 == packet[0] || 2 == packet[0])
-            {
-                // mark packet with timestamp
-                clock_get_uptime((uint64_t*)(&packet[kPacketTimeOffset]));
-                if (!_macroInversion || !invertMacros(packet))
+        case kPS2M_swipeDown:
+            DEBUG_LOG("ApplePS2Keyboard: Synaptic Trackpad call Swipe Down\n");
+            sendKeySequence(_actionSwipeDown);
+            break;
+            
+        case kPS2M_swipeLeft:
+            DEBUG_LOG("ApplePS2Keyboard: Synaptic Trackpad call Swipe Left\n");
+            sendKeySequence(_actionSwipeLeft);
+            break;
+            
+        case kPS2M_swipeRight:
+            DEBUG_LOG("ApplePS2Keyboard: Synaptic Trackpad call Swipe Right\n");
+            sendKeySequence(_actionSwipeRight);
+            break;
+            
+        case kPS2M_swipeUp:
+            DEBUG_LOG("ApplePS2Keyboard: Synaptic Trackpad call Swipe Up\n");
+            sendKeySequence(_actionSwipeUp);
+            break;
+            
+        case kIOACPIMessageDeviceNotification:
+            if (NULL != argument) {
+                UInt32 arg = *static_cast<UInt32*>(argument);
+                if ((arg & 0xFFFF0000) == 0)
                 {
-                    // normal packet
-                    dispatchKeyboardEventWithPacket(packet);
+                    UInt8 packet[kPacketLength];
+                    packet[0] = arg >> 8;
+                    packet[1] = arg;
+                    if (1 == packet[0] || 2 == packet[0])
+                    {
+                        // mark packet with timestamp
+                        clock_get_uptime((uint64_t*)(&packet[kPacketTimeOffset]));
+                        if (!_macroInversion || !invertMacros(packet))
+                        {
+                            // normal packet
+                            dispatchKeyboardEventWithPacket(packet);
+                        }
+                    }
+                    if (3 == packet[0] || 4 == packet[0])
+                    {
+                        // code 3 and 4 indicate send both make and break
+                        packet[0] -= 2;
+                        clock_get_uptime((uint64_t*)(&packet[kPacketTimeOffset]));
+                        if (!_macroInversion || !invertMacros(packet))
+                        {
+                            // normal packet (make)
+                            dispatchKeyboardEventWithPacket(packet);
+                        }
+                        clock_get_uptime((uint64_t*)(&packet[kPacketTimeOffset]));
+                        packet[1] |= 0x80; // break code
+                        if (!_macroInversion || !invertMacros(packet))
+                        {
+                            // normal packet (break)
+                            dispatchKeyboardEventWithPacket(packet);
+                        }
+                    }
                 }
             }
-            if (3 == packet[0] || 4 == packet[0])
-            {
-                // code 3 and 4 indicate send both make and break
-                packet[0] -= 2;
-                clock_get_uptime((uint64_t*)(&packet[kPacketTimeOffset]));
-                if (!_macroInversion || !invertMacros(packet))
-                {
-                    // normal packet (make)
-                    dispatchKeyboardEventWithPacket(packet);
-                }
-                clock_get_uptime((uint64_t*)(&packet[kPacketTimeOffset]));
-                packet[1] |= 0x80; // break code
-                if (!_macroInversion || !invertMacros(packet))
-                {
-                    // normal packet (break)
-                    dispatchKeyboardEventWithPacket(packet);
-                }
-            }
-        }
+            break;
     }
+
     return kIOReturnSuccess;
 }
 
@@ -1914,9 +1927,9 @@ bool ApplePS2Keyboard::dispatchKeyboardEventWithPacket(const UInt8* packet)
             {
                 // get current enabled status, and toggle it
                 bool enabled;
-                _device->dispatchMouseMessage(kPS2M_getDisableTouchpad, &enabled);
+                _device->dispatchMessage(kPS2M_getDisableTouchpad, &enabled);
                 enabled = !enabled;
-                _device->dispatchMouseMessage(kPS2M_setDisableTouchpad, &enabled);
+                _device->dispatchMessage(kPS2M_setDisableTouchpad, &enabled);
                 break;
             }
             if (origKeyCode != 0x0137)
@@ -2034,7 +2047,7 @@ bool ApplePS2Keyboard::dispatchKeyboardEventWithPacket(const UInt8* packet)
     info.adbKeyCode = adbKeyCode;
     info.goingDown = goingDown;
     info.eatKey = eatKey;
-    _device->dispatchMouseMessage(kPS2M_notifyKeyPressed, &info);
+    _device->dispatchMessage(kPS2M_notifyKeyPressed, &info);
 
     //REVIEW: work around for caps lock bug on Sierra 10.12...
     if (adbKeyCode == 0x39 && version_major >= 16)
@@ -2090,103 +2103,6 @@ void ApplePS2Keyboard::sendKeySequence(UInt16* pKeys)
         uint64_t now_abs;
         clock_get_uptime(&now_abs);
         dispatchKeyboardEventX(*pKeys & 0xFF, *pKeys & 0x1000 ? false : true, now_abs);
-    }
-}
-
-void ApplePS2Keyboard::receiveMessage(int message, void* data)
-{
-    //
-    // Here is where we receive messages from the mouse/trackpad driver
-    //
-    
-    switch (message)
-    {
-        case kPS2M_swipeDown:
-            DEBUG_LOG("ApplePS2Keyboard: Synaptic Trackpad call Swipe Down\n");
-            sendKeySequence(_actionSwipeDown);
-            break;
-            
-        case kPS2M_swipeLeft:
-            DEBUG_LOG("ApplePS2Keyboard: Synaptic Trackpad call Swipe Left\n");
-            sendKeySequence(_actionSwipeLeft);
-			break;
-            
-		case kPS2M_swipeRight:
-			DEBUG_LOG("ApplePS2Keyboard: Synaptic Trackpad call Swipe Right\n");
-            sendKeySequence(_actionSwipeRight);
-			break;
-            
-        case kPS2M_swipeUp:
-            DEBUG_LOG("ApplePS2Keyboard: Synaptic Trackpad call Swipe Up\n");
-            sendKeySequence(_actionSwipeUp);
-            break;
-
-            
-        case kPS2M_swipe4FingersDown:
-            DEBUG_LOG("ApplePS2Keyboard: Synaptic Trackpad call Swipe 4 Fingers Down\n");
-            sendKeySequence(_actionSwipe4FingersDown);
-            break;
-            
-        case kPS2M_swipe4FingersLeft:
-            DEBUG_LOG("ApplePS2Keyboard: Synaptic Trackpad call Swipe 4 Fingers Left\n");
-            sendKeySequence(_actionSwipe4FingersLeft);
-            break;
-            
-        case kPS2M_swipe4FingersRight:
-            DEBUG_LOG("ApplePS2Keyboard: Synaptic Trackpad call Swipe 4 Fingers Right\n");
-            sendKeySequence(_actionSwipe4FingersRight);
-            break;
-            
-        case kPS2M_swipe4FingersUp:
-			DEBUG_LOG("ApplePS2Keyboard: Synaptic Trackpad call Swipe 4 Fingers Up\n");
-            sendKeySequence(_actionSwipe4FingersUp);
-            break;
-            
-        case kPS2M_swipeDownFromEdge:
-            DEBUG_LOG("ApplePS2Keyboard: Synaptic Trackpad call Swipe Down From Edge\n");
-            sendKeySequence(_actionSwipeDownFromEdge);
-            break;
-            
-        case kPS2M_swipeLeftFromEdge:
-            DEBUG_LOG("ApplePS2Keyboard: Synaptic Trackpad call Swipe Left From Edge\n");
-            sendKeySequence(_actionSwipeLeftFromEdge);
-            break;
-            
-        case kPS2M_swipeRightFromEdge:
-            DEBUG_LOG("ApplePS2Keyboard: Synaptic Trackpad call Swipe Right From Edge\n");
-            sendKeySequence(_actionSwipeRightFromEdge);
-            break;
-            
-        case kPS2M_swipeUpFromEdge:
-            DEBUG_LOG("ApplePS2Keyboard: Synaptic Trackpad call Swipe Up From Edge\n");
-            sendKeySequence(_actionSwipeUpFromEdge);
-            break;
-            
-        case kPS2M_zoomIn:
-            DEBUG_LOG("ApplePS2Keyboard: Synaptic Trackpad call Zoom In\n");
-            sendKeySequence(_actionZoomIn);
-            break;
-            
-        case kPS2M_zoomOut:
-            DEBUG_LOG("ApplePS2Keyboard: Synaptic Trackpad call Zoom Out\n");
-            sendKeySequence(_actionZoomOut);
-            break;
-        
-        case kPS2M_2FingersTap:
-            DEBUG_LOG("ApplePS2Keyboard: Synaptic Trackpad call 2 finger tap\n");
-            sendKeySequence(_action2FingersTap);
-            break;
-            
-        case kPS2M_3FingersTap:
-            DEBUG_LOG("ApplePS2Keyboard: Synaptic Trackpad call 3 finger tap\n");
-            sendKeySequence(_action3FingersTap);
-            break;
-            
-        case kPS2M_4FingersTap:
-            DEBUG_LOG("ApplePS2Keyboard: Synaptic Trackpad call 4 finger tap\n");
-            sendKeySequence(_action4FingersTap);
-            break;
-            
     }
 }
 

@@ -62,7 +62,7 @@ https://github.com/RehabMan/OS-X-Voodoo-PS2-Controller/wiki/How-to-Install
 
 Downloads are available on Bitbucket:
 
-https://bitbucket.org/RehabMan/os-x-voodoo-ps2-controller/downloads
+https://bitbucket.org/RehabMan/os-x-voodoo-ps2-controller/downloads/
 
 Note: Archived (old) downloads are available on Google Code:
 
@@ -134,6 +134,82 @@ Note: often times you will see either of the two problems mentioned above right 
 
 
 ### Change Log:
+
+2018-10-08 v1.9.2
+
+- Tapping stability: ignore moves while waiting for tap gestures (eg. pointer will not move while making a tap or double tap gesture)
+
+- Increase TapThreasholdX/Y, DoubleTapThresholdX/Y (from 50/100 to 75/150)
+
+
+2018-09-28 v1.9.1
+
+- Fix panic caused by notifications that sometimes happen during HID registration (reported issue #166 and elsewhere)
+
+
+2018-09-22 v1.9.0
+
+- VoodooPS2Daemon is deprecated, replaced with kernel level functionality (courtesy the-darkvoid)
+
+- "ignore  built-in trackpad" now works with USB mice as well as bluetooth mice (courtesy the-darkvoid)
+
+- use system notifications for keyboard integration with VoodooI2C project (courtesy the-darkvoid)
+
+
+2018-05-06 v1.8.34
+
+- fix bug with DisableDevice when used with the Synaptics profile
+
+
+2018-05-05 v1.8.33 (redacted)
+
+- change BogusDeleteThreshX and BogusDeltaThreshY for Thinkpad_TrackPad profile (Lenovo T420)
+
+- change default delay for findMouseDevice to 100ms
+
+
+2018-04-24 v1.8.32
+
+- add trackpad prefpane properties for VoodooPS2Mouse when ActLikeTrackpad is set
+
+
+no release v1.8.31
+
+- merge jcsnider's pull request for better Thinkpad trackpoint support
+
+
+2018-04-18 v1.8.30
+
+- Wait (default) 500ms before checking for PS2 mouse in findMouseDevice
+
+- FindMouseDelay can be overriden in VoodooPS2Controller.kext Info.plist or with kernel flag vps2_findmousedelay
+
+
+2017-10-31 v1.8.29
+
+- Fixed lid sleep issue with ProBook series (the fix disables keygen when spurious key make code 'e0 05'/make received)
+
+- added SSDT-HP-FixLidSleep.dsl for other models that may need the same fix
+
+- future proofed version specific property injection (time will tell)
+
+
+2017-09-01 v1.8.28
+
+- Fixed VoodooPS2Daemon (USB mouse detection) as it has been broken for Sierra for some time.
+
+
+2017-07-22 v1.8.27
+
+- Add support for 10.13 High Sierra (currently in beta)
+
+- Fix issue ALPS glidepoint bufferring issue
+
+
+2017-05-27 v1.8.26
+
+- Now matches on PNP0320 (Japanese keyboard).  Fix for issue #117
+
 
 2016-12-08 v1.8.25
 
